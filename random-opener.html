@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>ランダムURLオープナー</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- === OGP / SNS プレビュー === -->
+  <!-- TODO: 公開URLと画像URLを実URLに置換 -->
+<meta property="og:title" content="…">
+<meta property="og:description" content="…">
+<meta property="og:url" content="https://あなたのページURL">
+<meta property="og:image" content="https://ibb.co/XZFKKLSr">
+<meta name="twitter:card" content="summary_large_image">
+
+
+  <style>
+    :root{--bg:#f6f7f9;--card:#fff;--ink:#111;--muted:#666;--bd:#e5e7eb}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
+    .wrap{min-height:100%;display:grid;place-items:center;background:var(--bg);padding:24px}
+    .card{background:var(--card);padding:24px 28px;border:1px solid var(--bd);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.05);max-width:760px;width:min(92vw,760px)}
+    h1{font-size:20px;margin:0 0 12px}
+    p{margin:6px 0 0}
+    .muted{color:#444}
+    .hint{font-size:12px;color:var(--muted);margin-top:10px}
+    .row{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+    button{padding:10px 14px;border-radius:10px;border:1px solid #d1d5db;background:#111;color:#fff;cursor:pointer}
+    button.secondary{background:#fff;color:#111;border-color:#cfd3d8}
+    .url{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;word-break:break-all}
+    .list{margin-top:12px;font-size:12px;color:var(--muted);line-height:1.5}
+    .list code{font-size:12px}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>ランダムURLオープナー</h1>
+    <p class="muted">選択されたURL：</p>
+    <p id="picked" class="url">決定中…</p>
+
+    <div class="row">
+      <button id="open-same">同じタブで開く</button>
+      <button id="open-new" class="secondary">新しいタブで開く</button>
+      <button id="reroll" class="secondary">別のURLを再抽選</button>
+    </div>
+
+    <p class="hint">
+      自動遷移: クエリ <code>?auto=1</code> で履歴あり遷移。<code>?auto=replace</code> で履歴なし遷移。<br>
+      重み付き抽選: <code>WEIGHTS</code> を設定（下のコメント参照）。
+    </p>
+
+    <div class="list" id="list"></div>
+  </div>
+</div>
+
+<script>
+  // ============================
+  // 設定（ここを編集）
+  // ============================
+
+  // TODO: 候補URLを列挙
+  const URLS = [
+    "https://okoge.link/im8ezuny?openExternalBrowser=1",
+    "https://okoge.link/331hipmr?openExternalBrowser=1",
+    
+  ];
+
+  // 任意：重み付き抽選をしたい場合は各URLに対応する整数重みを設定（同長）
+  // 例: Aを5倍出やすく、Bを2、Cを1 の比率にする => [5,2,1]
+  // 未使用なら null のまま
+  const WEIGHTS = null; // 例: [5, 2, 1]
+
+  // ============================
+  // 本体ロジック
+  // ============================
+
+  function pickUniform(arr){
+    if(arr.length === 1) return arr[0];
+    const u32 = new Uint32Array(1);
+    crypto.getRandomValues(u32);
+    return arr[u32[0] % arr.length];
+  }
+
+  function pickWeighted(arr, weights){
+    if(!weights || weights.length !== arr.length) return pickUniform(arr);
+    const total = weights.reduce((a,b)=>a + Math.max(0, b|0), 0);
+    if(total <= 0) return pickUniform(arr);
+    const u32 = new Uint32Array(1);
+    crypto.getRandomValues(u32);
+    const r = u32[0] % total;
+    let acc = 0;
+    for(let i=0;i<arr.length;i++){
+      acc += Math.max(0, weights[i]|0);
+      if(r < acc) return arr[i];
+    }
+    return arr[arr.length-1];
+  }
+
+  const params = new URLSearchParams(location.search);
+  const auto = params.get("auto"); // null | "1" | "replace"
+
+  let current = pickWeighted(URLS, WEIGHTS);
+
+  const $picked = document.getElementById("picked");
+  const $list = document.getElementById("list");
+
+  function render(){
+    $picked.textContent = current;
+    // 候補一覧を表示（デバッグ・確認用）
+    const html = [
+      '<div>候補一覧:</div>',
+      '<ol>',
+      ...URLS.map(u => `<li><code>${escapeHtml(u)}</code></li>`),
+      '</ol>'
+    ].join('');
+    $list.innerHTML = html;
+  }
+
+  function openSame(){ location.href = current; }
+  function openSameReplace(){ location.replace(current); }
+  function openNew(){ window.open(current, "_blank", "noopener,noreferrer"); }
+
+  document.getElementById("open-same").addEventListener("click", openSame);
+  document.getElementById("open-new").addEventListener("click", openNew);
+  document.getElementById("reroll").addEventListener("click", () => { current = pickWeighted(URLS, WEIGHTS); render(); });
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  render();
+
+  if (auto === "1") {
+    setTimeout(openSame, 50);
+  } else if (auto === "replace") {
+    setTimeout(openSameReplace, 50);
+  }
+</script>
+
+<noscript>
+  <div style="padding:16px">
+    JavaScriptを有効にしてください。候補:
+    <ul>
+      <li><a href="https://example.com/a">https://example.com/a</a></li>
+      <li><a href="https://example.com/b">https://example.com/b</a></li>
+      <li><a href="https://example.com/c">https://example.com/c</a></li>
+    </ul>
+  </div>
+</noscript>
+</body>
+</html>
