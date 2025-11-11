@@ -59,86 +59,45 @@
 </div>
 
 <script>
-  // ============================
-  // 設定（ここを編集）
-  // ============================
-
-  // TODO: 候補URLを列挙
+  // ===== 設定 =====
   const URLS = [
     "https://okoge.link/im8ezuny?openExternalBrowser=1",
     "https://okoge.link/331hipmr?openExternalBrowser=1",
-    
   ];
+  const WEIGHTS = null;       // 例: [5,2] で重み付け
+  const MODE = "replace";     // "replace"=履歴なし / "push"=履歴あり
 
-  // 任意：重み付き抽選をしたい場合は各URLに対応する整数重みを設定（同長）
-  // 例: Aを5倍出やすく、Bを2、Cを1 の比率にする => [5,2,1]
-  // 未使用なら null のまま
-  const WEIGHTS = null; // 例: [5, 2, 1]
-
-  // ============================
-  // 本体ロジック
-  // ============================
-
+  // ===== 抽選 =====
   function pickUniform(arr){
-    if(arr.length === 1) return arr[0];
+    if (arr.length === 1) return arr[0];
     const u32 = new Uint32Array(1);
     crypto.getRandomValues(u32);
     return arr[u32[0] % arr.length];
   }
-
-  function pickWeighted(arr, weights){
-    if(!weights || weights.length !== arr.length) return pickUniform(arr);
-    const total = weights.reduce((a,b)=>a + Math.max(0, b|0), 0);
-    if(total <= 0) return pickUniform(arr);
-    const u32 = new Uint32Array(1);
-    crypto.getRandomValues(u32);
-    const r = u32[0] % total;
-    let acc = 0;
-    for(let i=0;i<arr.length;i++){
-      acc += Math.max(0, weights[i]|0);
-      if(r < acc) return arr[i];
-    }
+  function pickWeighted(arr, w){
+    if (!w || w.length !== arr.length) return pickUniform(arr);
+    const total = w.reduce((a,b)=>a+Math.max(0,b|0),0);
+    if (total <= 0) return pickUniform(arr);
+    const u32 = new Uint32Array(1); crypto.getRandomValues(u32);
+    let r = u32[0] % total, acc = 0;
+    for (let i=0;i<arr.length;i++){ acc += Math.max(0,w[i]|0); if (r<acc) return arr[i]; }
     return arr[arr.length-1];
   }
 
   const params = new URLSearchParams(location.search);
-  const auto = params.get("auto"); // null | "1" | "replace"
+  const debug = params.get("debug") === "1";     // ?debug=1 で遷移しない確認モード
+  const target = pickWeighted(URLS, WEIGHTS);
 
-  let current = pickWeighted(URLS, WEIGHTS);
-
-  const $picked = document.getElementById("picked");
-  const $list = document.getElementById("list");
-
-  function render(){
-    $picked.textContent = current;
-    // 候補一覧を表示（デバッグ・確認用）
-    const html = [
-      '<div>候補一覧:</div>',
-      '<ol>',
-      ...URLS.map(u => `<li><code>${escapeHtml(u)}</code></li>`),
-      '</ol>'
-    ].join('');
-    $list.innerHTML = html;
-  }
-
-  function openSame(){ location.href = current; }
-  function openSameReplace(){ location.replace(current); }
-  function openNew(){ window.open(current, "_blank", "noopener,noreferrer"); }
-
-  document.getElementById("open-same").addEventListener("click", openSame);
-  document.getElementById("open-new").addEventListener("click", openNew);
-  document.getElementById("reroll").addEventListener("click", () => { current = pickWeighted(URLS, WEIGHTS); render(); });
-
-  function escapeHtml(s){
-    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-
-  render();
-
-  if (auto === "1") {
-    setTimeout(openSame, 50);
-  } else if (auto === "replace") {
-    setTimeout(openSameReplace, 50);
+  if (debug) {
+    // 画面に選ばれたURLだけ表示（遷移しない）
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const el = document.getElementById('picked') || document.body;
+      (el.textContent !== undefined ? el : document.body).textContent = target;
+    });
+  } else {
+    // 即時リダイレクト
+    if (MODE === "replace") location.replace(target);
+    else location.href = target;
   }
 </script>
 
@@ -154,5 +113,6 @@
 </noscript>
 </body>
 </html>
+
 
 
